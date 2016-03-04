@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Activation
 from keras.optimizers import SGD
+from keras.utils.visualize_util import plot
 
 c1 = pd.read_csv('raw_ski_data/Carolyn Run1.txt',header=None)
 c1.columns = ['Time m','Ball of foot m','Bridge m','Heel m','Calf m','Inner shin m','Outer shin m','acc x m','acc y m','acc z m','gyro x m','gyro y m','gyro z m','Time s','Ball of foot s','Bridge s','Heel s','Calf s','Inner shin s','Outer shin s','acc x s','acc y s','acc z s','gyro x s','gyro y s','gyro z s']
@@ -33,12 +34,16 @@ def mark_turns(l):
 c1_turnlabels = mark_turns(c1_turns)
 c1['turn label'] = c1_turnlabels
 
+np.asarray(c1_turnlabels)
 
+len(c1[['Inner shin m','Outer shin m']].values)
 
+len(c1['Ball of foot m'].values.tolist())
+len(c1_turnlabels)
 c1.head()
 
 model = Sequential()
-model.add(Dense(64, input_dim=20, init='uniform', activation='relu'))
+model.add(Dense(64, input_dim=4, init='uniform', activation='relu'))
 model.add(Dropout(0.5))
 model.add(Dense(64, activation='relu'))
 model.add(Dropout(0.5))
@@ -48,6 +53,6 @@ model.add(Dense(1, activation='sigmoid'))
 # in a binary classification problem, it should be set to "binary".
 model.compile(loss='binary_crossentropy',optimizer='rmsprop',class_mode='binary')
 
-model.fit(X_train, Y_train, nb_epoch=5, batch_size=32)
+model.fit(c1[['Inner shin m','Outer shin m','Inner shin s','Outer shin s']].values, np.asarray(c1_turnlabels), nb_epoch=5, batch_size=32)
 
-objective_score = model.evaluate(X_test, Y_test, batch_size=32)
+objective_score = model.evaluate(c1[['Inner shin m','Outer shin m','Inner shin s','Outer shin s']].values, np.asarray(c1_turnlabels), batch_size=32)
