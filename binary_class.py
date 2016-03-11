@@ -60,9 +60,12 @@ c1['smoothed gyro'] = smoothed_gyro
 len(t1_turnlabels)
 len(t1)
 
+t1.to_csv('Tom1_filt_turnclass.csv')
+c1.to_csv('Carolyn1_filt_turnclass.csv')
+
 
 t1_turnlabels = mark_turns(t1_turns)
-t1['turn label'] = real_turns
+t1['turn label'] = t1_turnlabels
 c1['smoothed gyro'] = smoothed_gyro
 
 np.asarray(c1_turnlabels)
@@ -70,11 +73,11 @@ np.asarray(c1_turnlabels)
 len(c1[['Inner shin m','Outer shin m']].values)
 
 len(c1['Ball of foot m'].values.tolist())
-len(c1_turnlabels)
+len(t1.columns)
 c1.head()
 
 model = Sequential()
-model.add(Dense(64, activation='relu'))
+model.add(Dense(64, input_dim=26, init='uniform', activation='relu'))
 model.add(Dropout(0.5))
 model.add(Dense(64, activation='relu'))
 model.add(Dropout(0.5))
@@ -84,6 +87,13 @@ model.add(Dense(1, activation='sigmoid'))
 # in a binary classification problem, it should be set to "binary".
 model.compile(loss='binary_crossentropy',optimizer='rmsprop',class_mode='binary')
 
-model.fit(c1[['Inner shin m','Outer shin m','Inner shin s','Outer shin s']].values, np.asarray(c1_turnlabels), nb_epoch=5, batch_size=32)
+model.fit(t1.values, np.asarray(t1_turnlabels), nb_epoch=5, batch_size=32, show_accuracy=True)
 
 objective_score = model.evaluate(c1[['Inner shin m','Outer shin m','Inner shin s','Outer shin s']].values, np.asarray(c1_turnlabels), batch_size=32)
+
+
+c1 = pd.read_csv('raw_ski_data/Carolyn Run1.txt',header=None)
+c1.columns = ['Time m','Ball of foot m','Bridge m','Heel m','Calf m','Inner shin m','Outer shin m','acc x m','acc y m','acc z m','gyro x m','gyro y m','gyro z m','Time s','Ball of foot s','Bridge s','Heel s','Calf s','Inner shin s','Outer shin s','acc x s','acc y s','acc z s','gyro x s','gyro y s','gyro z s']
+
+
+c1_turns = [1708,1777,1820,1854,1898,1942,1986,2029]
