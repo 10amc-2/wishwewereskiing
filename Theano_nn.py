@@ -44,7 +44,7 @@ srng = RandomStreams(seed=234)
 # start-snippet-1
 class HiddenLayer(object):
     def __init__(self, rng, input, n_in, n_out, train_state, W=None, b=None,
-                 activation=T.tanh):
+                 activation=T.nnet.relu,dropout=0.3):
         """
         Typical hidden layer of a MLP: units are fully-connected and have
         sigmoidal activation function. Weight matrix W is of shape (n_in,n_out)
@@ -106,19 +106,12 @@ class HiddenLayer(object):
         self.W = W
         self.b = b
 
-        lin_output = T.dot(input, self.W) + self.b
-        self.output = (
-            lin_output if activation is None
-            else activation(lin_output)
-        )
-        # parameters of the model
-        self.params = [self.W, self.b]
         def network(training):
-            lin_output = T.nnet.sigmoid(T.dot(input,self.W) + self.b)
+            lin_output = T.dot(input, self.W) + self.b
             if training:
-                lin_output = T.switch(srng.binomial(size=lin_output.shape,p=0.5),lin_output,0)
+                lin_output = T.switch(srng.binomial(size=lin_output.shape,p=dropout),lin_output,0)
             else:
-        	    lin_output = 0.5 * lin_output
+        	    lin_output = (1-dropout) * lin_output
             self.output = (lin_output if activation is None else activation(lin_output))
             # parameters of the model
             self.params = [self.W, self.b]
@@ -137,7 +130,7 @@ class MLP(object):
     class).
     """
 
-    def __init__(self, rng, input, n_in, n_hidden, n_out, ts):
+    def __init__(self, rng, input, n_in, n_hidden1, n_hidden2, n_out, ts):
         """Initialize the parameters for the multilayer perceptron
 
         :type rng: numpy.random.RandomState
@@ -164,11 +157,20 @@ class MLP(object):
         # into a HiddenLayer with a tanh activation function connected to the
         # LogisticRegression layer; the activation function can be replaced by
         # sigmoid or any other nonlinear function
-        self.hiddenLayer = HiddenLayer(
+        self.hiddenLayer1 = HiddenLayer(
             rng=rng,
             input=input,
             n_in=n_in,
-            n_out=n_hidden,
+            n_out=n_hidden1,
+            activation=T.tanh,
+            train_state=ts
+        )
+
+        self.hiddenLayer2 = HiddenLayer(
+            rng=rng,
+            input=self.hiddenLayer1.output,
+            n_in=n_hidden1,
+            n_out=n_hidden2,
             activation=T.tanh,
             train_state=ts
         )
@@ -176,37 +178,36 @@ class MLP(object):
         # The logistic regression layer gets as input the hidden units
         # of the hidden layer
         self.logRegressionLayer = LogisticRegression(
-            input=self.hiddenLayer.output,
-            n_in=n_hidden,
+            input=self.hiddenLayer2.output,
+            n_in=n_hidden2,
             n_out=n_out
         )
         # end-snippet-2 start-snippet-3
         # L1 norm ; one regularization option is to enforce L1 norm to
         # be small
         self.L1 = (
-            abs(self.hiddenLayer.W).sum()
+            abs(self.hiddenLayer1.W).sum() + abs(self.hiddenLayer2.W).sum()
             + abs(self.logRegressionLayer.W).sum()
         )
 
         # square of L2 norm ; one regularization option is to enforce
         # square of L2 norm to be small
         self.L2_sqr = (
-            (self.hiddenLayer.W ** 2).sum()
-            + (self.logRegressionLayer.W ** 2).sum()
+            (self.hiddenLayer1.W ** 2).sum() + (self.hiddenLayer2.W ** 2).sum() + (self.logRegressionLayer.W ** 2).sum()
         )
 
         # negative log likelihood of the MLP is given by the negative
         # log likelihood of the output of the model, computed in the
         # logistic regression layer
-        self.negative_log_likelihood = (
-            self.logRegressionLayer.negative_log_likelihood
+        self.crossentropy = (
+            self.logRegressionLayer.crossentropy
         )
         # same holds for the function computing the number of errors
         self.errors = self.logRegressionLayer.errors
 
         # the parameters of the model are the parameters of the two layer it is
         # made out of
-        self.params = self.hiddenLayer.params + self.logRegressionLayer.params
+        self.params = self.hiddenLayer1.params + self.hiddenLayer2.params + self.logRegressionLayer.params
         # end-snippet-3
 
         # keep track of model input
@@ -215,8 +216,8 @@ class MLP(object):
 
 
 
-def test_mlp(learning_rate=0.001, L1_reg=0.000, L2_reg=0.02, n_epochs=10000,
-             dataset='data_nn.csv', batch_size=7, n_hidden=200):
+def test_mlp(learning_rate=0.01, L1_reg=0.000, L2_reg=0.0002, n_epochs=10000,
+             dataset='data_nn.csv', batch_size=15, n_hidden1=200, n_hidden2=100):
     """
     Demonstrate stochastic gradient descent optimization for a multilayer
     perceptron
@@ -274,7 +275,8 @@ def test_mlp(learning_rate=0.001, L1_reg=0.000, L2_reg=0.02, n_epochs=10000,
         rng=rng,
         input=x,
         n_in=96,
-        n_hidden=n_hidden,
+        n_hidden1=n_hidden1,
+        n_hidden2=n_hidden2,
         n_out=4,
         ts=z
     )
@@ -284,7 +286,7 @@ def test_mlp(learning_rate=0.001, L1_reg=0.000, L2_reg=0.02, n_epochs=10000,
     # the model plus the regularization terms (L1 and L2); cost is expressed
     # here symbolically
     cost = (
-        classifier.negative_log_likelihood(y)
+        classifier.crossentropy(y)
         + L1_reg * classifier.L1
         + L2_reg * classifier.L2_sqr
     )
@@ -314,7 +316,9 @@ def test_mlp(learning_rate=0.001, L1_reg=0.000, L2_reg=0.02, n_epochs=10000,
     # compute the gradient of cost with respect to theta (sotred in params)
     # the resulting gradients will be stored in a list gparams
     gparams = [T.grad(cost, param) for param in classifier.params]
-    ginput = T.grad(cost, classifier.input)
+    #ginput = T.grad(cost, classifier.input)
+    ginput = theano.gradient.jacobian(cost, classifier.input)
+    #J, updates = theano.scan(lambda i, y,x : T.grad(y[i], x), sequences=T.arange(y.shape[0]), non_sequences=[y,x])
     # specify how to update the parameters of the model as a list of
     # (variable, update expression) pairs
 
@@ -435,9 +439,31 @@ def test_mlp(learning_rate=0.001, L1_reg=0.000, L2_reg=0.02, n_epochs=10000,
            ' ran for %.2fm' % ((end_time - start_time) / 60.)), file=sys.stderr)
 
 
-    f = theano.function([cost, classifier.input], ginput)
+    f = theano.function([classifier.input, y], ginput)
     print (pp(f.maker.fgraph.outputs[0]))
-    theano.printing.pydotprint(ginput)
+    theano.printing.pydotprint(f.maker.fgraph.outputs[0])
+    test_in = train_set = theano.shared([-0.85932366,  0.58308557,  0.57291266, -2.73567018,  0.5720682 ,
+            0.69788969,  0.01782218,  0.89483408,  3.28290884, -0.38769847,
+           -0.76087236, -0.50285087, -1.24656495, -0.73529842, -0.99193669,
+           -1.95702179,  1.57430759,  0.24463588,  3.06210202,  2.45264677,
+           -0.25134517, -0.04829522, -0.55535032,  0.0503641 , -1.91432708,
+            0.77470853,  0.7401515 , -2.71915318,  0.4963475 ,  1.00522374,
+            0.27958163, -1.35574041,  0.58434732, -0.67177877, -1.07827181,
+           -2.11205369, -1.48408336, -0.80823029, -0.95141343, -1.98320406,
+            1.46513513, -0.09303374, -0.76959049,  0.85930122, -0.86362607,
+           -0.78979288, -0.0444948 ,  0.45982332, -2.31018994,  0.85091726,
+            0.77935362, -2.70620804,  0.44422539,  1.24119296,  0.09150836,
+           -2.86868139, -1.16801813, -0.50896104, -0.05604379, -0.57235696,
+           -1.08455522, -1.17935154, -1.12812324, -1.9744183 ,  0.19983282,
+           -0.11654747, -1.15473115, -0.07447867, -0.28972877, -0.94642741,
+            0.26084976,  0.46156281,  2.1851348 , -0.77191925, -0.73766559,
+            1.8115434 ,  0.83390925, -0.91492798,  0.06507779,  2.07655773,
+            2.62112977,  0.04236459, -0.34407471, -0.03113814,  0.67895545,
+            1.1023399 ,  0.77840311,  1.18688628,  1.31362216,  0.86287225,
+            2.23127128,  1.32033075,  0.07084121,  0.45882767, -0.52361762,
+           -0.24316931])
+    test_out = theano.shared(numpy.asarray(4,dtype=theano.config.floatX))
+    print (f([test_in,test_out]))
 
 
 if __name__ == '__main__':

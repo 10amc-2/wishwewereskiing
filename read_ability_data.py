@@ -6,9 +6,6 @@ import theano.tensor as T
 
 def load_data(dataset,targets):
     ''' Loads the dataset
-
-    :type dataset: string
-    :param dataset: the path to the dataset (here MNIST)
     '''
 
     #############
